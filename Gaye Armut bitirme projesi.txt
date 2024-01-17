@@ -1,0 +1,423 @@
+*&---------------------------------------------------------------------*
+*& Report ZGA_PROJECT_01
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zga_project_01.
+
+TABLES : zga_customer_t01,
+         zga_order_t01.
+
+DATA : gt_fcat   TYPE lvc_t_fcat,
+       gs_fcat   TYPE lvc_s_fcat,
+       gs_layout TYPE lvc_s_layo,
+       gt_data   TYPE STANDARD TABLE OF zga_st_p1.
+
+
+DATA: lv_message    TYPE string,
+      gv_active_tab TYPE string.
+
+DATA: gv_transaction_code  TYPE tcode VALUE 'ZGAH01',
+      gv_transaction_code2 TYPE tcode VALUE 'ZGAI01'.
+
+DATA : lt_header_table TYPE STANDARD TABLE OF zga_customer_t01  WITH HEADER LINE,
+       ls_header_table TYPE zga_customer_t01,
+       lt_item_table   TYPE STANDARD TABLE OF zga_order_t01  WITH HEADER LINE,
+       ls_item_table   TYPE zga_order_t01.
+
+TYPES: BEGIN OF zga_customer_id_de,
+         customer_id TYPE string,
+       END OF zga_customer_id_de.
+
+TYPES: BEGIN OF zga_order_id_de,
+         order_id TYPE string,
+       END OF zga_order_id_de.
+
+DATA: lv_custid TYPE zga_customer_id_de-customer_id,
+      lv_ordid  TYPE zga_order_id_de-order_id.
+
+
+DATA : it_data TYPE STANDARD TABLE OF zga_st_p1 WITH HEADER LINE,
+       wa_data TYPE zga_st_p1.
+
+
+**SECREEN TANIMLARI
+SELECTION-SCREEN BEGIN OF TABBED BLOCK tab FOR 10 LINES.
+  SELECTION-SCREEN: TAB (20) tab_tab1 USER-COMMAND tab1 DEFAULT SCREEN 1001,
+  TAB (20) tab_tab2 USER-COMMAND tab2 DEFAULT SCREEN 1002.
+SELECTION-SCREEN END OF BLOCK tab.
+
+
+**SECREEN 1 TANIMI :
+SELECTION-SCREEN BEGIN OF SCREEN 1001 AS SUBSCREEN.
+  SELECTION-SCREEN: BEGIN OF BLOCK one WITH FRAME TITLE ft1.
+    PARAMETERS: p_custid TYPE zga_customer_id_de-customer_id,
+                p_ordid  TYPE zga_order_id_de-order_id.
+
+
+    IF tab-activetab = 'TAB1' AND p_custid IS NOT INITIAL AND p_ordid IS NOT INITIAL .
+*      WRITE : 'burası tab 1'.
+
+      SELECT zga_customer_t01~customer_id AS customer_id
+          zga_customer_t01~first_name  AS first_name
+          zga_customer_t01~last_name   AS last_name
+          zga_customer_t01~gender      AS gender
+          zga_customer_t01~tckno       AS tckno
+          zga_customer_t01~phone       AS phone
+          zga_customer_t01~email       AS email
+          zga_customer_t01~address     AS address
+          zga_order_t01~order_id       AS order_id
+          zga_order_t01~order_date     AS order_date
+          zga_order_t01~order_status   AS order_status
+          zga_order_t01~order_quantity AS order_quantity
+     INTO TABLE gt_data
+     FROM zga_customer_t01
+     INNER JOIN zga_order_t01
+     ON zga_customer_t01~customer_id = zga_order_t01~customer_id
+     WHERE zga_customer_t01~customer_id = p_custid
+     AND zga_order_t01~order_id = p_ordid.
+
+      IF gt_data IS NOT INITIAL .
+
+
+        CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+          EXPORTING
+*           I_BUFFER_ACTIVE        =
+            i_structure_name       = 'zga_st_p1'
+*           I_CLIENT_NEVER_DISPLAY = 'X'
+*           I_BYPASSING_BUFFER     =
+          CHANGING
+            ct_fieldcat            = gt_fcat
+          EXCEPTIONS
+            inconsistent_interface = 1
+            program_error          = 2
+            OTHERS                 = 3.
+        IF sy-subrc <> 0.
+* Implement suitable error handling here
+        ENDIF.
+
+        LOOP AT gt_fcat INTO gs_fcat.
+          CASE gs_fcat-fieldname.
+            WHEN 'FIRST_NAME'.
+              gs_fcat-outputlen = 20.
+            WHEN 'LAST_NAME'.
+              gs_fcat-outputlen = 20.
+            WHEN 'EMAIL'.
+              gs_fcat-outputlen = 20.
+            WHEN 'ADDRESS'.
+              gs_fcat-outputlen = 30.
+            WHEN 'GENDER'.
+              gs_fcat-outputlen = 10.
+            WHEN 'ORDER_STATUS'.
+              gs_fcat-outputlen = 20.
+            WHEN 'ORDER_QUANTITY'.
+              gs_fcat-outputlen = 5.
+              " Diğer durumlar buraya eklenebilir
+          ENDCASE.
+
+          MODIFY gt_fcat FROM gs_fcat TRANSPORTING outputlen.
+        ENDLOOP.
+
+        " ALV FUNCTION
+        CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+          EXPORTING
+            i_callback_program       = sy-repid
+            i_callback_pf_status_set = 'PF_STATUS_SET'
+            i_callback_user_command  = 'USER_COMMAND'
+            is_layout_lvc            = gs_layout
+            it_fieldcat_lvc          = gt_fcat
+            i_default                = 'X'
+            i_save                   = ' '
+*           IS_VARIANT               =
+          TABLES
+            t_outtab                 = gt_data
+*            EXCEPTIONS
+*           PROGRAM_ERROR            = 1
+*           OTHERS                   = 2
+          .
+        IF sy-subrc <> 0.
+* Implement suitable error handling here
+        ENDIF.
+
+      ELSE.
+        lv_message = 'No data found for the specified parameters.'.
+        WRITE: / lv_message.
+      ENDIF.
+
+    ENDIF.
+
+  SELECTION-SCREEN: END OF BLOCK one.
+SELECTION-SCREEN END OF SCREEN 1001.
+
+
+**SCREEN 2
+SELECTION-SCREEN BEGIN OF SCREEN 1002 AS SUBSCREEN.
+  PARAMETERS : p_fname TYPE localfile.
+SELECTION-SCREEN END OF SCREEN 1002.
+
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_fname.
+  PERFORM f4_fname.
+
+  IF tab-activetab = 'TAB2' AND p_fname IS NOT INITIAL.
+    PERFORM upload_data.
+  ELSE.
+*    MESSAGE 'Geçerli Dosya Giriniz! ' TYPE 'I'.
+    lv_message = 'Please give a file'.
+    WRITE: / lv_message.
+  ENDIF.
+
+
+INITIALIZATION.
+  tab_tab1 = 'Tab1'.
+  tab_tab2 = 'Tab2'.
+*  ft1 = 'Başlık buraya atılır'.
+
+AT SELECTION-SCREEN.
+
+  CASE sy-ucomm.
+    WHEN 'TAB1'.
+      MESSAGE 'TAB1 e basıldı ' TYPE 'S'.
+    WHEN 'TAB2'.
+      MESSAGE 'TAB2 ye basıldı ' TYPE 'S'.
+
+  ENDCASE.
+
+
+START-OF-SELECTION.
+*write : /'Active Tab: ' ,tab-activetab.
+*write : /'Active Subscreen: ' ,tab-dynnr.
+
+*&---------------------------------------------------------------------*
+*&      Form  f4_fname
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM f4_fname .
+  DATA: file_table TYPE filetable,
+        file_line  TYPE file_table,
+        rc         TYPE i.
+
+  CALL METHOD cl_gui_frontend_services=>file_open_dialog
+    EXPORTING
+      default_extension       = ''
+    CHANGING
+      file_table              = file_table
+      rc                      = rc
+    EXCEPTIONS
+      file_open_dialog_failed = 1
+      cntl_error              = 2
+      error_no_gui            = 3
+      not_supported_by_gui    = 4
+      OTHERS                  = 5.
+
+  READ TABLE file_table INTO file_line INDEX 1.
+  IF sy-subrc = 0.
+    p_fname = file_line-filename.
+  ENDIF.
+ENDFORM.                                                    "f4_fname
+
+*&---------------------------------------------------------------------*
+*&      Form  upload_data
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM upload_data .
+  DATA: lt_file LIKE alsmex_tabline OCCURS 0 WITH HEADER LINE.
+  DATA: gd_currentrow TYPE i.
+
+  CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE'
+    EXPORTING
+      filename                = p_fname
+      i_begin_col             = 1
+      i_begin_row             = 2
+      i_end_col               = 12
+      i_end_row               = 1000
+    TABLES
+      intern                  = lt_file
+    EXCEPTIONS
+      inconsistent_parameters = 1
+      upload_ole              = 2
+      OTHERS                  = 3.
+
+  IF sy-subrc NE 0 OR lt_file[] IS INITIAL.
+    MESSAGE 'Dosya Okunamadı !' TYPE 'I'.
+  ELSE.
+    SORT lt_file BY row col.
+    READ TABLE lt_file INDEX 1.
+    gd_currentrow = lt_file-row.
+
+    LOOP AT lt_file.
+      IF lt_file-row NE gd_currentrow.
+        APPEND wa_data TO it_data.
+        CLEAR wa_data.
+        gd_currentrow = lt_file-row.
+      ENDIF.
+      CASE lt_file-col.
+        WHEN '0001'.
+          wa_data-customer_id = lt_file-value.
+        WHEN '0002'.
+          wa_data-first_name = lt_file-value.
+        WHEN '0003'.
+          wa_data-last_name = lt_file-value.
+        WHEN '0004'.
+          wa_data-gender = lt_file-value.
+        WHEN '0005'.
+          wa_data-tckno = lt_file-value.
+        WHEN '0006'.
+          wa_data-phone = lt_file-value.
+        WHEN '0007'.
+          wa_data-email = lt_file-value.
+        WHEN '0008'.
+          wa_data-address = lt_file-value.
+        WHEN '0009'.
+          wa_data-order_id = lt_file-value.
+        WHEN '00010'.
+          wa_data-order_date = lt_file-value.
+        WHEN '00011'.
+          wa_data-order_status = lt_file-value.
+        WHEN '00012'.
+          wa_data-order_quantity = lt_file-value.
+
+      ENDCASE.
+    ENDLOOP.
+    APPEND wa_data TO it_data.
+  ENDIF.
+
+
+  CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+    EXPORTING
+*     I_BUFFER_ACTIVE        =
+      i_structure_name       = 'zga_st_p1'
+*     I_CLIENT_NEVER_DISPLAY = 'X'
+*     I_BYPASSING_BUFFER     =
+*     I_INTERNAL_TABNAME     =
+    CHANGING
+      ct_fieldcat            = gt_fcat
+    EXCEPTIONS
+      inconsistent_interface = 1
+      program_error          = 2
+      OTHERS                 = 3.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+  LOOP AT gt_fcat INTO gs_fcat.
+    CASE gs_fcat-fieldname.
+      WHEN 'FIRST_NAME'.
+        gs_fcat-outputlen = 20.
+      WHEN 'LAST_NAME'.
+        gs_fcat-outputlen = 20.
+      WHEN 'ADDRESS'.
+        gs_fcat-outputlen = 20.
+      WHEN 'GENDER'.
+        gs_fcat-outputlen = 5.
+      WHEN 'EMAIL'.
+        gs_fcat-outputlen = 20.
+      WHEN 'ORDER_STATUS'.
+        gs_fcat-outputlen = 20.
+      WHEN 'ORDER_QUANTITY'.
+        gs_fcat-outputlen = 5.
+        " Diğer durumlar buraya eklenebilir
+    ENDCASE.
+
+    MODIFY gt_fcat FROM gs_fcat TRANSPORTING outputlen.
+  ENDLOOP.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'PF_STATUS_SET'
+      i_callback_user_command  = 'USER_COMMAND'
+      is_layout_lvc            = gs_layout
+      it_fieldcat_lvc          = gt_fcat
+      i_default                = 'X'
+      i_save                   = ' '
+*     IS_VARIANT               =
+    TABLES
+      t_outtab                 = it_data
+* EXCEPTIONS
+*     PROGRAM_ERROR            = 1
+*     OTHERS                   = 2
+    .
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+ENDFORM.                    "upload_data
+
+
+**SUBROUTINES
+*&---------------------------------------------------------------------*
+*& Form PF_STATUS_SET
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM pf_status_set USING p_extab TYPE slis_t_extab.
+  SET PF-STATUS 'ZSTANDART3'.
+ENDFORM.
+
+FORM user_command USING r_ucomm     LIKE sy-ucomm
+                        rs_selfield TYPE slis_selfield.
+
+  CASE r_ucomm.
+    WHEN '&BUTON1'.
+      PERFORM save_to_table.
+      MESSAGE 'Veriler Tabloya Kaydedildi.' TYPE 'I'.
+    WHEN '&BUTON2'.
+      PERFORM execute_tcode.
+    WHEN OTHERS.
+      PERFORM execute_tcode2.
+  ENDCASE.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form execute_tcode
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM execute_tcode .
+  CALL TRANSACTION gv_transaction_code.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form execute_tcode2
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM execute_tcode2 .
+  CALL TRANSACTION gv_transaction_code2.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form save_to_table
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM save_to_table.
+
+
+  LOOP AT it_data INTO wa_data.
+    MOVE-CORRESPONDING wa_data TO ls_header_table.
+    APPEND ls_header_table TO lt_header_table.
+  ENDLOOP.
+
+  LOOP AT it_data INTO wa_data.
+    MOVE-CORRESPONDING wa_data TO ls_item_table.
+    APPEND ls_item_table TO lt_item_table.
+  ENDLOOP.
+
+  MODIFY zga_customer_t01 FROM TABLE lt_header_table[].
+  MODIFY zga_order_t01 FROM TABLE lt_item_table[].
+
+ENDFORM.
